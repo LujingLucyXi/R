@@ -9,9 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Please do not reorder the assignment - fill in each chunk as requested. 
 
-## Load the libraries + functions
+## Load the libraries
 
 Load all the libraries or functions that you will use to for the rest of the assignment. It is helpful to define your libraries and functions at the top of a report, so that others can know what they need for the report to compile correctly.
 
@@ -29,7 +28,7 @@ library(ggplot2)
 
 ```
 
-Load the Python libraries or functions that you will use for that section. 
+
 
 ```{python}
 ##python chunk
@@ -54,13 +53,6 @@ from sklearn.metrics import classification_report
 
 ## The Data
 
-The dataset is a set of Youtube comments that have been coded as:
-  - 1: spam youtube messages 
-  - 0: good youtube messages
-  - This data is stored in the `CLASS` column
-
-Import the data using either R or Python. I put a Python chunk here because you will need one to import the data, but if you want to first import into R, that's fine. 
-
 ```{r}
 ##python chunk
 youtube <- read.csv("youtube_spam.csv")
@@ -71,7 +63,7 @@ summary(youtube)
 
 ## Clean up the data (text normalization)
 
-Use one of our clean text functions to clean up the `CONTENT` column in the dataset. 
+
 
 ```{python}
 ##python chunk
@@ -302,13 +294,9 @@ avg_wv_test_features = document_vectorizer(corpus=tokenized_test, model=w2v_mode
 
 ## Build a classifier model
 
-In class, we used a few algorithms to test which model might be the best. Pick *one* of the algorithms to use here (logistic regression, naive bayes, support vector machine). 
-
-Run your algorithm on both the TF-IDF matrix and the output from word2vec. 
-
 ```{python}
 ##python chunk
-#svm is the chosen algorithm in this assignment 
+#svm is the chosen algorithm in this project
 
 from sklearn.svm import LinearSVC
 from sklearn.metrics import classification_report
