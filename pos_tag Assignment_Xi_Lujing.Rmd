@@ -1,0 +1,212 @@
+---
+title: "Part of Speech Tagging Assignment"
+author: "STUDENT NAME"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE,  cache = F}
+#do not change this
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+
+
+
+
+## Libraries / R Setup
+
+
+```{r}
+##r chunk
+
+library(reticulate)
+#devtools::install_github("bradleyboehmke/harrypotter")
+library(harrypotter)
+data('deathly_hallows')
+library(devtools)
+library(tagger)
+library(dplyr)
+library(qdap)
+
+library(RDRPOSTagger)
+library(udpipe)
+
+library(rJava)
+
+library(tokenizers)
+library(textclean)
+sys<-import('sys')
+
+
+sys$path
+
+
+Sys.setenv(RETICULATE_PYTHON = 'C:/Users/XILUJ/AppData/Local/r-miniconda/envs/r-reticulate/python.exe')
+
+```
+
+```{R}
+py_config()
+
+repl_python()
+
+```
+
+
+```{python}
+##python chunk
+import numpy as np
+import spacy
+import pandas as pd
+
+
+
+import nltk
+from nltk.corpus import brown
+```
+
+## Tagger Package
+
+- Use the `tagger` package to tag your chosen book and print out the first chapter only (i.e., row 1 of the book you chose). 
+- Use something like `(book[1])[[1]][1:10]` to print out the first few tags. 
+- Use the universal tag set and plot options to see what the most common parts of speech are for your chapter.
+- What are the top two most common parts of speech? 
+
+```{r}
+##r chunk
+
+tag_pos(deathly_hallows[1])
+
+print(tag_pos(deathly_hallows[1])[1])
+
+
+tag_pos(deathly_hallows)[1] %>% as_universal() %>% plot()
+
+#As shown by the bar plot, in the first chapter of Deathly Hallows, the top two most common parts of speech are NOUN and VERB. This adheres to the common pattern of novels. 
+```
+
+## RDR POS Tagger
+
+- Create an English language model that tags for part of speech.
+- Tag your first book chapter for part of speech. 
+- Use something like `head(...(book[1]))` to print out the first few examples. 
+
+```{r}
+##r chunk
+ELM <- rdr_model(language = "English", annotation = "POS")
+rdr_pos(ELM, x = deathly_hallows[1])
+head(rdr_pos(ELM, x = deathly_hallows[1]))
+```
+
+## spaCy
+
+- Import spacy and the English language module.
+- Tag the first chapter of your book using spacy, and print out the results. 
+- Use the `pandas` option at the beginning of the lecture to print out only a few rows. 
+
+```{python}
+##python chunk
+import nltk
+import spacy
+import pandas as pd
+
+nlp = spacy.load('en_core_web_sm')
+
+DH_py = r.deathly_hallows
+
+DH_tagged = [(word, word.tag_, word.pos_) for word in nlp(DH_py[0])]
+
+pd.DataFrame(DH_tagged).T
+```
+
+## Training your own tagger
+
+- Create a Default tagger in Python using `nltk`. 
+- The default option should be "NN" for nouns.
+- You do not have to use the tagger yet, just create it for a combined tagger to use later. (Don't tag! Don't print it out!)
+
+```{python}
+##python chunk
+nltk.download('brown')
+from nltk.corpus import brown
+default_tagger = nltk.DefaultTagger('NN')
+tokens = brown.words(categories = "news") 
+pd.DataFrame(default_tagger.tag(tokens)).head
+brown_tagged = brown.tagged_sents()
+
+
+default_tagger.evaluate(brown_tagged)
+```
+
+## Unigram Tagger 
+
+- Create a unigram tagger that is trained on the entire Brown corpus with tagged sentences. 
+  - Import the Brown corpus.
+  - Split the data into test and train. 
+  - Train your unigram tagger on the training sentences.
+  - Use the default tagger you created above as the backoff. 
+  - Do not use the tagger here, just train it. 
+
+```{python}
+##python chunk
+size = int(len(brown_tagged) * 0.9)
+train = brown_tagged[:size]
+test = brown_tagged[size:]
+
+unigram_tagger = nltk.UnigramTagger(train)
+
+
+t0 = nltk.DefaultTagger('NN')
+t1 = nltk.UnigramTagger(train, backoff=t0)
+```
+
+## Evaluate
+
+- Use the `.evaluate` function on your testing data to determine the accuracy of your tagger. 
+
+```{python}
+##python chunk
+unigram_tagger.evaluate(test)
+t1.evaluate(test)
+```
+
+## Apply to Harry Potter
+
+- Use the tagger you created above to apply to the first chapter of your Harry Potter book.
+- Hint: save your book as only the first chapter and then transfer to python to help make this shorter. 
+- Second hint: be sure to tokenize the data first!
+- Use something like `tagger.tag(book)[1:10]` to print out only the first ten tags. 
+
+```{python}
+##python chunk
+
+
+DH_py_tokenized =nlp(DH_py[0])
+pd.DataFrame(t1.tag(DH_py_tokenized)).head
+print(t1.tag(DH_py_tokenized)[:10])
+print(default_tagger.tag(DH_py_tokenized)[:10])
+```
+
+## Compare Results
+
+- Examine the output from the different taggers we used to tag Harry Potter. 
+- Are there any immediate differences you can notice when tagging?
+- Which tagger seems like the easiest to apply?
+- Why might the Brown corpus not be very good at tagging Harry Potter books? 
+
+```{R}
+
+#Multuple taggers were used to tag the Deathly Hallows book of the Harry Poter saga. The output was vastly different for some taggers, but similar for others. The R tagger package and the rdr tagger show the same results. Spacy is known as the state-of-the-art tagger and showed similar but slightly different results. For example, "out" was tagged as RP in RDR tagger but as IN using Spacy. The self-created unigram tagger with 'NN' as the default tagger tagged every word in the first 10 words as NN. It isn't as accurate, but it is probably more efficient. 
+
+#Yes, the self-created unigram tagger with 'NN' as the default tagger setting is immediately different from the previous taggers. 
+
+#The Rdr tagger or the R tagger package seems the most straight-forward method. Spacy is also an easy tool. 
+
+#The Brown Corpus is an electronic collection of text samples of American English. It was created in the 1960s, which might make it slightly out-dated by today's standards. Also, although Brown Corpus had been sampled from 15 different text categories, the sample size seems small for the modern times. Harry Potter books are written in the modern times and feature a very creative writing style. Further, the Harry Potter books have a magic context which may differ from standardized texts. 
+
+
+```
