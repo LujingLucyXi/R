@@ -1,9 +1,3 @@
----
-title: "Entity Recognition Homework"
-author: "Lujing Xi"
-date: "3/16/2021"
-output: html_document
----
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
