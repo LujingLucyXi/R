@@ -1,0 +1,255 @@
+---
+title: "Entity Recognition Homework"
+author: "Lujing Xi"
+date: "3/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+py_config()
+py_module_available("spacy")
+py_module_available("nltk")
+
+
+```
+
+
+```{R}
+
+library(wordnet)
+
+library(reticulate)
+py_config()
+py_module_available("spacy")
+py_module_available("nltk")
+```
+
+
+```{python}
+
+from nltk.corpus import wordnet as wn
+import pandas as pd
+
+from nltk.corpus import wordnet_ic
+import spacy
+import re
+
+```
+
+
+## Synsets
+
+- You should create a Pandas dataframe of the synsets for a random word in Wordnet.
+- Use https://www.randomword.net/ to find your random word.
+- You should create this dataframe like the example shown for "fruit" in the notes.
+
+
+```{python}
+
+cat_sets_py = wn.synsets("cat")
+print(cat_sets_py)
+
+cat_df = pd. DataFrame([{"Synset": each_synset,
+"Part of Speech": each_synset.pos(),
+"Definition": each_synset.definition(),
+"Lemmas": each_synset.examples()}
+for each_synset in cat_sets_py])
+
+cat_df
+cat_df["Definition"]
+
+
+```
+## Nyms
+
+- Include the hyponyms and hypernyms of the random word from above. 
+
+```{python}
+##python chunk
+cat= cat_sets_py[0]
+cat.hypernyms()
+cat.hyponyms()
+```
+## Similarity
+
+- Think of two related words to your random word. You can use the synonyms on the random generator page. Calculate the JCN and LIN similarity of your random word and these two words. (four numbers total).
+
+```{python}
+##python chunk
+kitten = wn.synsets("kitten")
+kitten[0].definition()
+kitten= kitten[0]
+
+tiger = wn.synsets("tiger")
+tiger[0].definition()
+tiger= tiger[0]
+
+semcor_ic = wordnet_ic.ic('ic-semcor.dat')
+kitten.jcn_similarity(cat, semcor_ic)
+tiger.jcn_similarity(cat, semcor_ic)
+kitten.lin_similarity(cat, semcor_ic)
+tiger.lin_similarity(cat, semcor_ic)
+```
+## NER Tagging
+
+- Create a blank spacy model to create your NER tagger. 
+
+```{python}
+##python chunk
+nlp = spacy.load("en_core_web_sm")
+nlp = spacy.blank ("en" )
+
+```
+
+- Add the NER pipe to your blank model. 
+
+```{python}
+##python chunk
+
+ner = nlp.create_pipe('ner')
+
+nlp.add_pipe(ner, last=True)  
+```
+ Create training data. 
+  - Go to: http://trumptwitterarchive.com/
+  - Note you can pick other people than Trump by using "Additional Accounts" at the top right. 
+  - Create training data with at least 5 tweets. 
+  - Tag those tweets with PERSON, LOCATION, GPE, etc. 
+
+```{python}
+##python chunk
+tweet1=("Even Mexico uses Voter I.D.")
+re.search("Mexico", tweet1)
+
+
+tweet2=("Only because Biden got very few votes, just like the Election!")
+re.search("Biden", tweet2)
+
+tweet3=("Big Rally Saturday Night in Georgia!!!")
+ 
+re.search("Georgia", tweet3)
+
+
+
+tweet4=("The legendary actor, 007 Sean Connery, has past on to even greener fairways. He was quite a guy, and a tough character. I was having a very hard time getting approvals for a big development in Scotland when Sean stepped in and shouted,“Let him build the damn thing”. That was....")
+re.search("Sean Connery", tweet4)
+re.search("Scotland", tweet4)
+
+
+tweet5=("Statement by Donald J. Trump, The President of the United States Full Video: https://t.co/EHqzsLbbJG https://t.co/Eu4IsLNsKD")
+re.search("Donald J. Trump", tweet5)
+re.search("United States", tweet5)
+
+tweet6=("The talks between the U.S. and Iran are going on forever,  WORLD'S LONGEST NEGOTIATION. Obama has no idea what he is doing - incompetent!")
+re.search("Iran", tweet6)
+re.search("the U.S.", tweet6)
+re.search("Obama", tweet6)
+
+tweet7=("Michigan voter fraud hearing going on now!")
+re.search('Michigan', tweet7)
+
+
+tweet8=("It’s amazing. Twitter refuses to allow the any mention of the Biden corruption story which was carried so well on @TuckerCarlson last night. It’s the biggest story and Big Tech, together with the Lamestream Media, isn’t allowing a word to be said about it.")
+re.search("Twitter", tweet8)
+re.search("Lamestream Media", tweet8)
+
+tweet9=('Happy Birthday to our wonderful Ivanka. Now go back to work! November 3rd.')
+
+re.search('Ivanka', tweet9)
+
+tweet10=('Maria is badly needed in Washington. She is an outstanding person who truly loves her Country and her State. Her opponent, @DonnaShalala, is a political hack who is a puppet of Nancy Pelosi. She does nothing for Florida. Maria has my Complete & Total Endorsement! https://t.co/4GumAgOA3J')
+
+re.search('Maria', tweet10)
+
+re.search('Washington', tweet10)
+
+re.search('Nancy Pelosi', tweet10)
+
+re.search('Florida', tweet10)
+
+
+
+training_data = [
+
+  (u"Even Mexico uses Voter I.D.", 
+  {'entities': [ (5,11,'GPE') ] }),
+  
+  (u"Only because Biden got very few votes, just like the Election!", 
+  {'entities': [ (13,18,'PER') ] }),
+  
+  (u"Big Rally Saturday Night in Georgia!!!", 
+  {'entities': [ (28,35,'GPE') ] }),
+
+  (u"The legendary actor, 007 Sean Connery, has past on to even greener fairways. He was quite a guy, and a tough character. I was having a very hard time getting approvals for a big development in Scotland when Sean stepped in and shouted,“Let him build the damn thing”. That was....", 
+  {'entities': [ (25,37,'PER'),(193,201,'GPE') ] }),
+  
+  
+  (u"Statement by Donald J. Trump, The President of the United States Full Video: https://t.co/EHqzsLbbJG https://t.co/Eu4IsLNsKD", 
+  {'entities': [ (13,28,'PER'),(51,64,'GPE') ] }),
+  
+  (u"The talks between the U.S. and Iran are going on forever,  WORLD'S LONGEST NEGOTIATION. Obama has no idea what he is doing - incompetent!", 
+  {'entities': [ (31,35, 'GPE'),(18,26, 'GPE'),(88,93,'PER')] }),
+  
+  (u"Michigan voter fraud hearing going on now!",
+  {'entities': [(0,8,'GPE')]}),
+  
+  (u"It’s amazing. Twitter refuses to allow the any mention of the Biden corruption story which was carried so well on @TuckerCarlson last night. It’s the biggest story and Big Tech, together with the Lamestream Media, isn’t allowing a word to be said about it.", 
+  {'entities': [ (14,21, 'ORG'),(196,212, 'ORG')] }),
+  
+  (u"Happy Birthday to our wonderful Ivanka. Now go back to work! November 3rd.", 
+  {'entities':[(32,38,'PER')] }),
+  
+  (u"Maria is badly needed in Washington. She is an outstanding person who truly loves her Country and her State. Her opponent, @DonnaShalala, is a political hack who is a puppet of Nancy Pelosi. She does nothing for Florida. Maria has my Complete & Total Endorsement! https://t.co/4GumAgOA3J", 
+  {'entities': [ (0,5, 'PER'),(25,35, 'GPE'),(177,189,'PER'),(212,219,'GPE')] })
+  
+]
+```
+
+- Add the labels that you used above to your NER tagger. 
+
+```{python}
+##python chunk
+nlp.entity.add_label('PER')
+nlp.entity.add_label('GPE')
+nlp.entity.add_label('ORG')
+```
+
+- Train your NER tagger with the training dataset you created. 
+
+```{python}
+##python chunk
+optimizer = nlp.begin_training()
+import random
+
+#run through training
+for i in range(20):
+    random.shuffle(training_data)
+    for text, annotations in training_data:
+        nlp.update([text], [annotations], sgd=optimizer)
+        
+        
+        
+nlp.to_disk("./model")
+```
+
+## Using your NER Tagger 
+
+- Use one new tweet from the same writer you had before. 
+- Use your new NER tagger to see if it grabs any of the entities you included. 
+
+```{python}
+##python chunk
+TaggerApplication = nlp(u"Biden & Obama owe a massive apology to the People of Flint. The water was poisoned on their watch. Not only did they fail them, Biden proudly accepted the endorsement of disastrous Gov Rick Snyder! Unlike Biden, I will always stand with the People of the Great State of MICHIGAN!")
+
+for entity in TaggerApplication.ents:
+  print(entity.label_, ' | ', entity.text)
+```
+```{R}
+##Summary
+
+
+#In summary, the NER Tagger created grabs some entities correctly, such as Obama as PER and Flint as GPE. However, other tags were incorrectly assigned due to several main reasons. Firstly, the training data is not sufficient. Although I already increased from 5 to 10 tweets, the results are not optimal. Ideally there should be at least hundreds of entries in the training set to make a sound model. Secondly, the upper case for the beginning of sentence creates confusion in the case of wrong entities tagged in "People of" as ORG, "Unlike Biden" as ORG, and Great State as ORG.
+
+```
