@@ -1,0 +1,270 @@
+---
+title: "525 Project"
+author: "Matt Varano and Lujing Xi"
+date: "11/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(rdbnomics)
+library(lubridate)
+library(tsibble) #creates cleaner time series functionality
+library(tsibbledata)
+
+```
+
+
+```{r Load Data}
+ExpenData = rdb(ids = c('BEA/NIUnderlyingDetail-U20406/DABDRX-M', #Expenditures abroad by U.S. residents (line 144) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DAIRRX-M', #Accommodations (104) (line 245) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DADMRX-M', #Admissions to specified spectator amusements (line 209) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DAITRX-M', #Air transportation (64) (line 203) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DALERX-M', #Auto leasing (line 191) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DAOPRX-M', #Alcoholic beverages purchased for off-premises consumption (5) (line 97) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DAPIRX-M', #Repair and rental of audio-visual, photographic, and information processing equipment (line 218) - Monthly
+                      'BEA/NIUnderlyingDetail-U20406/DAPPRX-M',  #Household appliances (part of 33) (line 27) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DBBBRX-M',  #Hairdressing salons and personal grooming establishments (line 305) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DCFSRX-M', #Clothing and footwear services (line 307) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DCLERX-M', #Household cleaning products (line 130) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DCHCRX-M', #Child care (line 312) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DCPPRX-M', #Personal computers/tablets and peripheral equipment - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DELCRX-M', #Electricity (27) (line 166) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DFFDRX-M', #Food produced and consumed on farms (6) (line 101) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DFNLRX-M', #Financial services (line 249) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DGASRX-M', #Gasoline and other motor fuel (line 113) - Monthly#
+                      'BEA/NIUnderlyingDetail-U20406/DHLCRX-M' #Health care (line 168) - Monthly#
+                                                              ))%>%
+          filter(!is.na(value))
+
+ExpenDataFiltered = ExpenData[,c(3,4,9,13,17,19)]
+
+EmploymentData =rdb(ids = c('BLS/ce/CEU0000000001')) %>%  #ALL EMPLOYEES, THOUSANDS – Total nonfarm – Not Seasonally Adjusted – Total nonfarm#
+                filter(!is.na(value))
+
+
+EmploymentDataFiltered = EmploymentData[,c(2,5,11,15,19)]
+
+CovidData = rdb(ids = c('JHU/confirmed/USA', #Confimred COVID Cases USA#
+                        'JHU/deaths/USA'))%>%  #Confirmend COVID Deaths USA#
+                          filter(!is.na(value))
+
+CovidDataFiltered = CovidData[,c(2,3,4,11,17)]
+```
+
+
+
+```{r Join Data}
+#Create an index to bind the different data tables together into one.
+
+CovidDataTS = CovidDataFiltered %>% mutate(IndexDate = as.character(period)) %>% mutate(IndexDate = as.Date(IndexDate, format ='%Y-%m-%d'))
+CovidDataTS = CovidDataTS %>% mutate(Month_Year = yearmonth(IndexDate)) %>% mutate(Dataset = dataset_code) %>% mutate(DatasetCode = dataset_code)%>% mutate(Value = value) %>% mutate(Unit = 'Cases') %>% group_by(Month_Year,Dataset,DatasetCode,Unit) %>% summarize(Value = sum(Value))
+
+
+ExpenDataTS = ExpenDataFiltered %>% mutate(IndexDate = as.character(period)) %>% mutate(IndexDate = as.Date(IndexDate, format ='%Y-%m-%d'))
+ExpenDataTS = ExpenDataTS %>% mutate(Month_Year = yearmonth(IndexDate)) %>% mutate(Dataset = Concept) %>% mutate(DatasetCode = dataset_code)%>%  mutate(Unit = metric)%>% mutate(Value = value) 
+ExpenDataTS = ExpenDataTS[,c(8:12)]
+
+EmploymentDataTS = EmploymentDataFiltered %>% mutate(IndexDate = as.character(period)) %>% mutate(IndexDate = as.Date(IndexDate, format ='%Y-%m-%d'))
+EmploymentDataTS = EmploymentDataTS %>% mutate(Month_Year = yearmonth(IndexDate)) %>% mutate(Dataset = dataset_name) %>% mutate(DatasetCode = series_code) %>% mutate(Unit = `Data Type`) %>% mutate(Value = value) %>% mutate(year = year(IndexDate)) %>% filter(year == '2020')
+
+EmploymentDataTS = EmploymentDataTS[,c(7:11)]
+
+
+#Filter data to only show 2019 and 2020
+AllData = bind_rows(CovidDataTS,ExpenDataTS,EmploymentDataTS)
+AllData = unique(AllData) %>% mutate(year = year(Month_Year)) %>% filter(year == '2020'| year == '2019')
+
+#Turn data into unique columns
+AllDataWide = AllData[,-c(3,4,6)]
+AllDataWide = AllDataWide %>% pivot_wider(names_from =Dataset, values_from = Value)
+
+
+```
+
+
+```{r Graphics}
+
+
+AllData %>% filter(DatasetCode =='confirmed') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle("US Confirmed Covid Cases")
+
+AllData %>% filter(DatasetCode =='deaths') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle("US Confirmed Covid Deaths")
+
+AllData %>% filter(Dataset ==	'Expenditures abroad by U.S. residents') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Expenditures abroad by U.S. residents')
+
+AllData %>% filter(Dataset ==	'Expenditures abroad by U.S. residents') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Expenditures abroad by U.S. residents')
+
+AllData %>% filter(Dataset ==	'Expenditures abroad by U.S. residents') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Expenditures abroad by U.S. residents')
+
+AllData %>% filter(Dataset ==	'Pleasure aircraft') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Pleasure aircraft')
+
+AllData %>% filter(Dataset ==	'Air transportation (64)') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Air transportation')
+
+AllData %>% filter(Dataset ==	'Auto leasing') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Auto leasing')
+
+AllData %>% filter(Dataset ==	'Alcoholic beverages purchased for off-premises consumption (5)') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Alcoholic beverages purchased for off-premises consumption')
+
+AllData %>% filter(Dataset ==	'Repair and rental of audio-visual, photographic, and information processing equipment') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Repair and rental of audio-visual, photographic, and information processing equipment')
+
+AllData %>% filter(Dataset ==	'Household appliances (part of 33)') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Household appliances')
+
+AllData %>% filter(Dataset ==	'Hairdressing salons and personal grooming establishments') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Hairdressing salons and personal grooming establishments')
+
+AllData %>% filter(Dataset ==	'Clothing and footwear services') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Clothing and footwear services')
+
+AllData %>% filter(Dataset ==	'Child care') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Child care')
+
+AllData %>% filter(Dataset ==	'Personal computers/tablets and peripheral equipment') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Personal computers/tablets and peripheral equipment')
+
+AllData %>% filter(Dataset ==	'Electricity (27)') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Electricity')
+
+AllData %>% filter(Dataset ==	'Food produced and consumed on farms (6)') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Food produced and consumed on farms')
+
+AllData %>% filter(Dataset ==	'Financial services') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Financial services')
+
+AllData %>% filter(Dataset ==	'Gasoline and other motor fuel') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Gasoline and other motor fuel')
+
+AllData %>% filter(Dataset ==	'Health care') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Health care')
+
+
+```
+```{R}
+AllData %>% filter(Dataset ==	'Employment, Hours, and Earnings - National') %>% ggplot(aes(x = Month_Year, y = Value))+geom_line(position="identity", color="cornflowerblue")+ggtitle('Employment')
+
+
+
+```
+```{R}
+
+
+library(reshape2)
+```
+```{R}
+AllDataLean<-AllData[,c(1,2,5)]
+head(AllDataLean,20)
+
+```
+```{R}
+max(CovidData$value)
+```
+```{R}
+
+library(qwraps2)
+options(qwraps2_markup = "markdown")
+
+alldata_summary <-
+  list(
+       "Employees (thounsands)" =
+       list("min"       = ~min(EmploymentData$value),
+            "median"    = ~median(EmploymentData$value),
+            "max"       = ~max(EmploymentData$value),
+            "mean" = ~ mean(EmploymentData$value)),
+       "Expenditure in Food(millions)" =
+       list("min"       = ~ min(ExpenFood$value),
+            "max"       = ~ max(ExpenFood$value),
+            "mean" = ~ mean(ExpenFood$value)),
+       "Expenditure in Alcohol(millions)" =
+       list("min"       = ~ min(ExpenAlcohol$value),
+            "max"       = ~ max(ExpenAlcohol$value),
+            "mean"      = ~ mean(ExpenAlcohol$value)),
+        "Expenditure in Air Transportation(millions)" =
+       list("min"       = ~ min(ExpenAirTrans$value),
+            "max"       = ~ max(ExpenAirTrans$value),
+            "mean" = ~ mean(ExpenAirTrans$value)),  
+       )
+```
+
+
+
+```{R}
+#Time-Series Analysis
+
+library(AER)
+library(dynlm)
+library(forecast)
+library(readxl)
+library(stargazer)
+library(scales)
+library(quantmod)
+library(urca)
+```
+
+```{R}
+TimeSeriesData<-AllDataWide%>%arrange(Month_Year)
+```
+```{R}
+#Multiple Regression
+
+lm(TimeSeriesData$confirmed*100000  ~  TimeSeriesData$`Expenditures abroad by U.S. residents`+TimeSeriesData$`Pleasure aircraft`+TimeSeriesData$`Admissions to specified spectator amusements`+TimeSeriesData$`Air transportation (64)`+TimeSeriesData$`Auto leasing`+TimeSeriesData$`Alcoholic beverages purchased for off-premises consumption (5)`+TimeSeriesData$`Repair and rental of audio-visual, photographic, and information processing equipment`+TimeSeriesData$`Household appliances (part of 33)`+TimeSeriesData$`Hairdressing salons and personal grooming establishments`+TimeSeriesData$`Clothing and footwear services`+TimeSeriesData$`Household cleaning products`+TimeSeriesData$`Electricity (27)`+TimeSeriesData$`Food produced and consumed on farms (6)`+TimeSeriesData$`Financial services`+TimeSeriesData$`Gasoline and other motor fuel`+TimeSeriesData$`Health care`+TimeSeriesData$`Employment, Hours, and Earnings - National`)
+
+```
+```{R}
+head(TimeSeriesData,20)
+```
+```{R}
+#Since lots of data points, including those for employment, are missing in 2019, focus on the data startung Jan 2020 when Covid-19 cases just started to accumulate. 
+TimeSeriesData2020<-TimeSeriesData[13:22,]
+head(TimeSeriesData2020, 20)
+```
+```{R ggplot}
+library(ggplot2)
+library("tidyverse")
+
+TimeSeriesData2020$Month_Year<-as.Date(TimeSeriesData2020$Month_Year, format="%mmm/%Y")
+
+head(TimeSeriesData2020)
+
+PlotData<- TimeSeriesData2020 %>%
+  select(Month_Year,confirmed, deaths) %>%
+  gather(key = "variable", value = "value", -Month_Year)
+head(PlotData, 50)
+
+
+
+p<-ggplot(PlotData, aes(x = Month_Year, y = value)) + 
+  geom_line(aes(color = variable, linetype = variable)) + 
+  scale_color_manual(values = c("steelblue", "red"))
+p+labs(x="2020 Months", y="Covie-19 Accmulated Cases")
+
+
+PlotData2<-TimeSeriesData %>%
+  select(Month_Year,`Household cleaning products`, `Air transportation (64)`, `Financial services`, `Health care`, `Gasoline and other motor fuel`, `Clothing and footwear services`, `Child care`, `Personal computers/tablets and peripheral equipment`, `Food produced and consumed on farms (6)`) %>%
+  gather(key = "variable", value = "value", -Month_Year)
+head(PlotData, 50)
+ExpenP<-ggplot(PlotData2, aes(x = Month_Year, y = value)) + 
+  geom_line(aes(color = variable)) + 
+  scale_color_manual(values = c("purple", "red", "yellow", "green", "black", "plum", "blue", "turquoise", "brown"))
+ExpenP
+
+PlotData3<-TimeSeriesData %>%
+  select(Month_Year,`Household cleaning products`, `Air transportation (64)`, `Financial services`, `Gasoline and other motor fuel`, `Clothing and footwear services`, `Child care`, `Personal computers/tablets and peripheral equipment`, `Food produced and consumed on farms (6)`) %>%
+  gather(key = "variable", value = "value", -Month_Year)
+ExpenP2<-ggplot(PlotData3, aes(x = Month_Year, y = value)) + 
+  geom_line(aes(color = variable)) + 
+  scale_color_manual(values = c("purple", "red", "yellow", "green", "black", "plum", "turquoise", "brown"))
+ExpenP2
+```
+```{R}
+
+library(ggpmisc)
+library(ggplot2)
+theme_set(theme_minimal())
+
+
+```
+
+```{R}
+library(corrplot)
+rquery.cormat<-function(x,
+                        type=c('lower', 'upper', 'full', 'flatten'),
+                        graph=TRUE,
+                        graphType=c("correlogram", "heatmap"),
+                        col=NULL, ...)
+correlation<-rquery.cormat(TimeSeriesData2020[2:22])
+round(correlation,2)
+```
+```{R}
+lm(TimeSeriesData2020$confirmed ~  TimeSeriesData2020$`Expenditures abroad by U.S. residents`+TimeSeriesData2020$`Pleasure aircraft`+TimeSeriesData2020$`Admissions to specified spectator amusements`+TimeSeriesData2020$`Air transportation (64)`+TimeSeriesData2020$`Auto leasing`+TimeSeriesData2020$`Alcoholic beverages purchased for off-premises consumption (5)`+TimeSeriesData2020$`Repair and rental of audio-visual, photographic, and information processing equipment`+TimeSeriesData2020$`Household appliances (part of 33)`+TimeSeriesData2020$`Hairdressing salons and personal grooming establishments`+TimeSeriesData2020$`Clothing and footwear services`+TimeSeriesData2020$`Household cleaning products`+TimeSeriesData2020$`Electricity (27)`+TimeSeriesData2020$`Food produced and consumed on farms (6)`+TimeSeriesData2020$`Financial services`+TimeSeriesData2020$`Gasoline and other motor fuel`+TimeSeriesData2020$`Health care`+TimeSeriesData2020$`Employment, Hours, and Earnings - National`)
+
+```
