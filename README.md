@@ -1,4 +1,4 @@
-<h2> Hey there! I'm Lujing Lucy Xi. <img src="https://github.com/souvikguria98/souvikguria98/blob/master/Hi.gif" width="25"></h2>
+<h2> Hey there! I'm Lujing Lucy Xi. I am new on GitHub! <img src="https://github.com/souvikguria98/souvikguria98/blob/master/Hi.gif" width="25"></h2>
 <img align="right" alt="GIF" src="https://media.giphy.com/media/L1R1tvI9svkIWwpVYr/giphy.gif" width="500"/>
 
 <h3>👧🏻💻 About Me </h3>
