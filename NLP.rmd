@@ -1,0 +1,344 @@
+---
+title: 'Classification'
+author: "Lujing Xi"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Load the libraries + functions
+
+```{R}
+##r chunk
+library(reticulate)
+py_config()
+library(plyr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+
+
+
+
+```
+
+Load the Python libraries or functions that you will use for that section. 
+
+```{python}
+##python chunk
+
+from textsearch import TextSearch
+import spacy
+import numpy as np
+import matplotlib.pyplot as plt
+
+import pandas as pd
+from bs4 import BeautifulSoup 
+from nltk.stem import PorterStemmer
+ps = PorterStemmer()
+import nltk
+stopwords = nltk.corpus.stopwords.words('english')
+import unicodedata
+from contractions import contractions_dict
+import gensim
+from sklearn.svm import LinearSVC
+from sklearn.metrics import classification_report
+```
+
+## The Data
+
+The dataset is a set of Youtube comments that have been coded as:
+  - 1: spam youtube messages 
+  - 0: good youtube messages
+  - This data is stored in the `CLASS` column
+
+Import the data using either R or Python. I put a Python chunk here because you will need one to import the data, but if you want to first import into R, that's fine. 
+
+```{r}
+##python chunk
+youtube <- read.csv("youtube_spam.csv")
+head(youtube)
+str(youtube)
+summary(youtube)
+```
+
+## Clean up the data (text normalization)
+
+Use one of our clean text functions to clean up the `CONTENT` column in the dataset. 
+
+```{python}
+##python chunk
+import pandas as pd
+from pandas import DataFrame
+
+
+
+def func_nb():
+   data = pd.read_csv("youtube_spam.csv")
+   df = pd.DataFrame(data)
+   return df
+
+data_df = func_nb()
+data_df.head()
+```
+
+```{R}
+clean.text = function(x)
+{
+
+  x = tolower(x)
+ 
+  x = gsub("rt", "", x)
+
+  x = gsub("@\\w+", "", x)
+
+  x = gsub("[[:punct:]]", "", x)
+ 
+  x = gsub("[[:digit:]]", "", x)
+
+  x = gsub("http\\w+", "", x)
+
+  x = gsub("[ |\t]{2,}", "", x)
+  
+  x = gsub("^ ", "", x)
+ 
+  x = gsub(" $", "", x)
+  return(x)
+}
+
+youtubecontent <- youtube$CONTENT
+
+youtubecontent = clean.text (youtubecontent)
+```
+
+```{python}
+
+
+Content = r.youtubecontent
+
+
+data_df["CONTENT"] = [BeautifulSoup(str(text)).get_text() for text in data_df["CONTENT"].tolist()]
+
+data_df["CONTENT"] = data_df["CONTENT"].str.lower()
+
+
+data_df["CONTENT"] = [unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode("utf-8", "ignore") for text in data_df["CONTENT"].tolist()]
+
+
+data_df["CONTENT"] = data_df["CONTENT"].str.replace("[^a-zA-Z0-9\s]|\[|\]", " ")
+
+data_df["CONTENT"] = ["   " .join([ps.stem(word) for word in text.split()]) for text in data_df["CONTENT"].tolist()]
+
+
+
+data_df['CONTENT'] = ["  ".join([word for word in text.split() if word not in stopwords]) for text in data_df["CONTENT"].tolist()]
+
+
+data_df = data_df.dropna().reset_index(drop=True)
+
+
+
+data_df.to_csv("clean_youtube_spam.csv", index=False)
+
+data_df = pd.read_csv("clean_youtube_spam.csv")
+data_df.head()
+
+
+print(data_df)
+
+
+```
+## Split the data
+
+Split the data into testing and training data.
+
+```{python}
+##python chunk
+from sklearn.model_selection import train_test_split
+
+train_corpus, test_corpus, train_label_nums, test_label_nums, train_label_names, test_label_names = train_test_split(np.array(data_df['CONTENT'].apply(lambda x:np.str_(x))), np.array(data_df['CLASS']), np.array(data_df['CLASS']), test_size=0.20, random_state=42)
+
+train_corpus.shape, test_corpus.shape
+
+
+from collections import Counter
+
+trd = dict(Counter(train_label_names))
+tsd = dict(Counter(test_label_names))
+
+(pd.DataFrame([[key, trd[key], tsd[key]] for key in trd], 
+             columns=['Target Label', 'Train Count', 'Test Count']).sort_values(by=['Train Count', 'Test Count'], ascending=False))
+             
+```
+
+## Process the data
+
+For word2vec, create the tokenized vectors of the text.
+
+```{python}
+##python chunk
+tokenized_train = [nltk.tokenize.word_tokenize(text)
+                   for text in train_corpus]
+tokenized_test = [nltk.tokenize.word_tokenize(text)
+                   for text in test_corpus]
+
+
+import gensim
+
+w2v_num_features = 300
+w2v_model = gensim.models.Word2Vec(tokenized_train, #corpus
+            size=w2v_num_features, #number of features
+            window=10, #size of moving window
+            min_count=2, #minimum number of times to run
+            sg = 0, #cbow model
+            iter=5, workers=5) #iterations and cores
+
+
+def document_vectorizer(corpus, model, num_features):
+    vocabulary = set(model.wv.index2word)
+    
+    def average_word_vectors(words, model, vocabulary, num_features):
+        feature_vector = np.zeros((num_features,), dtype="float64")
+        nwords = 0.
+        
+        for word in words:
+            if word in vocabulary: 
+                nwords = nwords + 1.
+                feature_vector = np.add(feature_vector, model.wv[word])
+        if nwords:
+            feature_vector = np.divide(feature_vector, nwords)
+
+        return feature_vector
+
+    features = [average_word_vectors(tokenized_sentence, model, vocabulary, num_features)
+                    for tokenized_sentence in corpus]
+    return np.array(features)
+    
+
+avg_wv_train_features = document_vectorizer(corpus=tokenized_train, model=w2v_model,
+                                                     num_features=w2v_num_features)
+avg_wv_test_features = document_vectorizer(corpus=tokenized_test, model=w2v_model,
+                                                    num_features=w2v_num_features)
+```
+
+## TF-IDF
+
+
+```{python}
+##python chunk
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+
+tv = TfidfVectorizer(use_idf=True, min_df=0.0, max_df=1.0)
+
+
+tv_train_features = tv.fit_transform(train_corpus)
+tv_test_features = tv.transform(test_corpus)
+
+print('TFIDF model:> Train features shape:', tv_train_features.shape, ' Test features shape:', tv_test_features.shape)
+```
+
+## Word2Vec
+
+Build the word2vec model.
+
+
+
+```{python}
+##python chunk
+import gensim
+w2v_number_features = 300
+
+w2v_model= gensim.models.Word2Vec(tokenized_train,
+size=w2v_num_features,
+window=10,
+min_count=2,
+sg=0,
+iter=5,
+workers=5)
+
+
+```
+
+## Convert the model
+
+Convert the word2vec model into a set of features to use in our classifier. 
+
+```{python}
+##python chunk
+
+def document_vectorizer(corpus, model, num_features):
+    vocabulary = set(model.wv.index2word)
+    
+    def average_word_vectors(words, model, vocabulary, num_features):
+        feature_vector = np.zeros((num_features,), dtype="float64")
+        nwords = 0.
+        
+        for word in words:
+            if word in vocabulary: 
+                nwords = nwords + 1.
+                feature_vector = np.add(feature_vector, model.wv[word])
+        if nwords:
+            feature_vector = np.divide(feature_vector, nwords)
+
+        return feature_vector
+
+    features = [average_word_vectors(tokenized_sentence, model, vocabulary, num_features)
+                    for tokenized_sentence in corpus]
+    return np.array(features)
+
+avg_wv_train_features = document_vectorizer(corpus=tokenized_train, model=w2v_model,
+                                                     num_features=w2v_num_features)
+avg_wv_test_features = document_vectorizer(corpus=tokenized_test, model=w2v_model,
+                                                    num_features=w2v_num_features)
+```
+
+## Build a classifier model
+
+In class, we used a few algorithms to test which model might be the best. Pick *one* of the algorithms to use here (logistic regression, naive bayes, support vector machine). 
+
+Run your algorithm on both the TF-IDF matrix and the output from word2vec. 
+
+```{python}
+##python chunk
+#svm is the chosen algorithm in this assignment 
+
+from sklearn.svm import LinearSVC
+from sklearn.metrics import classification_report
+
+svm = LinearSVC(penalty='l2', C=1, random_state=42)
+
+#Run svm on TF-IDF
+svm.fit(tv_train_features, train_label_names)
+y_pred_tv = svm.predict(tv_test_features)
+
+
+#Run svm on word2vec
+svm.fit(avg_wv_train_features, train_label_names)
+y_pred_wv = svm.predict(avg_wv_test_features)
+
+```
+
+## Examine the results
+
+Print out the accuracy, recall, and precision of both of your models.
+
+```{python}
+##python chunk
+
+
+#print out results
+print(classification_report(test_label_names, y_pred_tv))
+print(classification_report(test_label_names, y_pred_wv))
+```
+
+## Interpretation 
+
+
+The Liner Support Vector Machine (SVM) algorithm separates categories by the largest amount on the hypereplane. It is the algorithm chosen in this scenario to provide good classification of the spam from the real comments. The results of SVM applied on the TF-IDF and the word2vec data vary in accuracy, but generally speaking it works pretty well in separating spams. 
+
+In this case, SVM applied on TF-IDF yields higher accuracy (95%) as compared to word2vec (65%). 
