@@ -1,0 +1,251 @@
+---
+title: 'COVID-19 Visualization of US Cases and Deaths by State'
+author: "Lujing Xi and Team "
+date: "5/20/2020"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r start, warning=FALSE, message=FALSE}
+library(shiny)
+library(shinythemes)
+library(dplyr)
+library(ggplot2)
+library(gganimate)
+library(readr)
+library(reshape2)
+library(RCurl)
+library(gifski)
+library(png)
+getwd()
+setwd("/Users/XILUJ/Desktop/Code Sample -COVID")
+
+df<-read.csv("/Users/XILUJ/Desktop/Code Sample -COVID/us-counties-corona.csv")
+
+
+BASE_DIR <- "./"
+corona_data_filepath <- paste(BASE_DIR, "us-counties-corona.csv", sep = "")
+state_fip_codes_filepath <- paste(BASE_DIR, "state-fip-codes.csv", sep = "")
+gis_data_filepath <- paste(BASE_DIR, "gis-data", sep = "")
+
+df <- read_csv(corona_data_filepath, col_names=TRUE)
+df$county <- as.factor(df$county)
+df$state <- as.factor(df$state)
+df <- df %>%
+    group_by(state, date) %>%
+    mutate(state_cases = sum(cases))
+```
+
+## Introduction
+
+Coronavirus disease (COVID-19) is an infectious disease caused by the newly discovered coronavirus. It has been plaguing the global Economics and threating the public health since late 2019. The goal of this project is to explore COVID-19 pandemic cases and deaths in the United States between Jan 21, 2020 and April 17, 2020 using interactive visualization, which would vividly showcase the explosion of cases among different US States during that critical time period. An interactive Rshiny interface will be presented with various adjustable inputs that contributes to a more dynamic viewpoint of the pandemic spread. Dates, cases vs. deaths, and state are the three input variables that can be changed, so that Coronavirus cases or deaths numbers can be viewed for user-specified state and date range combination. Data from USDA is used to transform state names into FIP codes[1].
+
+
+### COVID-19 Trend in the United States
+The following graph animates the US COVID-19 cases and deaths increase over the period of March to April 2020 and vividly showcases the rapid spread of the virus. As shown by the animated plot, cases and deaths spiked significantly over the last 30 days. Stringent social distance is called for given the severity of the virus spread and the resulted deaths. 
+
+```{r gganimate1, warning=FALSE, message=FALSE}
+tmp <- df %>% group_by(date) %>% summarise(Cases = sum(cases), Deaths = sum(deaths))
+
+totals <- melt(tmp, variable.name = "Type", value.name = "DayCounts", id="date")
+
+plot1 <- ggplot(totals, aes(date, DayCounts, color = Type, group = Type)) +
+  geom_line() +
+  geom_point() +
+  labs(x = 'Date', y = 'Daily Counts', color = 'Count Type') +
+  scale_y_continuous(labels = function(y) format(y, scientific = FALSE)) +
+  theme_minimal() +
+  transition_reveal(date) +
+  enter_fade() +
+  exit_shrink() +
+  ggtitle("Fig. 1.2: COVID-19 Trend",
+          subtitle = "Counts as of: {frame_along}")
+
+animate(plot1, fps=5)
+```
+
+### COVID-19 in the States with Highest Number of Cases (Top 10)
+
+Next, top 10 states with the highest number of cases are shown in the following animated graph. According to the graph, California & New York saw the first cases at approximately the same time. However, most likely due to the difference in population density of each state (420 people per square mile for New York vs. 251 people per square mile), the spread of the virus was at a much lower rate in California than in New York. The population density for the most populated cities in each state (New York City - 26,403/sq. mile  vs. Los Angeles - 7,544/sq. mile) likely also played its part in the rapid spread in NYC. Other factors related to the differences between the demographics of the two states could also have contributed to the difference. Examples could include travel frequency, sanitary standards, and employment rates. Further understanding may need machine learning models to facilitate, when more complex categorical data are available. 
+
+```{r gganimate2, warning=FALSE, message=FALSE}
+top_10 <- df %>%
+    filter(date == "2020-04-17") %>%
+    group_by(state) %>%
+    summarize(c = sum(cases)) %>%
+    top_n(10)
+
+filtered <- df %>%
+    group_by(date, state) %>%
+    filter(state %in% top_10$state)
+
+plot2 <- ggplot(filtered, aes(reorder(state, -cases), cases)) +
+  geom_bar(stat = "identity", fill="red3") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45)) +
+  labs(x = 'State', y = 'COVID-19 Cases') +
+  transition_time(date) +
+  ggtitle("Fig. 1.1: COVID-19 Cases Growth in Cases for Top 10 States with the Highest Cases",
+          subtitle = "Number of Cases as of: {frame_time}")
+
+animate(plot2, fps=20)
+```
+
+
+
+### COVID-19 Cases and Deaths in US Counties
+Finally, here is an interactive Rshiny dashboard that enables a geographical view of the development and varying degrees of pandemic severity across all US states. The users State, date range and cases/deaths" are the three adjustable inputs. Each county of each selected state is marked by a respective color representing COVID-19 severity, annotated by the number of cases/deaths when cursor moves to the region. 
+
+
+```{r shiny, echo=FALSE, warning=FALSE, message=FALSE}
+
+library(leaflet)
+library(rgdal)
+library(readr)
+
+state_fips <- read_csv(state_fip_codes_filepath)
+
+counties <- rgdal::readOGR(dsn = gis_data_filepath, layer = "cb_2016_us_county_500k", verbose = FALSE)
+counties$NAME <- factor(counties$NAME)
+
+get_state_fip <- state_fips$State_FIP
+names(get_state_fip) <- state_fips$State_Name
+
+ui <- fluidPage(
+  theme = shinytheme("lumen"),
+
+  h4("COVID-19 Cases in the United States"),
+  
+  leafletOutput(outputId = "map", height = 400),
+  
+  hr(),
+
+  fluidRow(
+    column(4, offset = 2,
+      selectInput(
+        inputId = "state",
+        label = strong("State"),
+        choices = unique(df$state),
+        selected = "New York"
+      ),
+      dateRangeInput(
+        "date",
+        strong("Date range"),
+        start = "2020-01-21",
+        end = "2020-03-31",
+        min = "2020-01-21",
+        max = "2020-03-31"
+      )
+    ),
+    column(4, offset = 1,
+       radioButtons(
+         "stat",
+         strong("Number of"),
+         choices = list("Cases" = 1, "Deaths" = 2),
+         selected = 1
+       )
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  selected_state <- reactive({
+    s <- input$state
+    start <- input$date[1]
+    end <- input$date[2]
+    counts_by_county <- df %>%
+        filter(state == s, date > start & date < end) %>%
+        group_by(county) %>%
+        summarise(county_cases = sum(cases), county_deaths = sum(deaths)) %>%
+        rename("NAME" = county)
+    selected_counties <- counties[counties$STATEFP == unname(get_state_fip[s]), ]
+    merge(selected_counties, counts_by_county)
+  })
+  
+  output$map <- renderLeaflet({
+    selected <- selected_state()
+    coords <- as.data.frame(coordinates(selected))
+    long <- median(coords$V1)
+    lat <- median(coords$V2)
+    leaflet(selected) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
+      setView(long, lat, zoom = 6)
+  })
+  
+  observe({
+    spatial <- selected_state()
+    palCovidCases <- colorNumeric(
+      palette = "Reds",
+      domain = spatial$county_cases,
+      # n = 5,
+      na.color = 'lightgreen'
+    )
+    palCovidDeaths <- colorNumeric(
+      palette = "Reds",
+      domain = spatial$county_deaths,
+      # n = 5,
+      na.color = 'lightgreen'
+    )
+    proxy <- leafletProxy("map", data = spatial)
+    proxy %>% clearShapes() %>% clearControls()
+    if (input$stat == 1) {
+      proxy %>%
+        addPolygons(
+          weight = .75,
+          fillColor = ~palCovidCases(spatial$county_cases),
+          fillOpacity = 1,
+          label = paste(spatial$NAME, ": ", spatial$county_cases, sep = "")
+        ) %>%
+        addLegend(
+          position = "bottomright",
+          pal = palCovidCases,
+          values = spatial$county_cases,
+          opacity = 1,
+          title = "# COVID Cases"
+        )
+    } else {
+      proxy %>%
+        addPolygons(
+          weight = .75,
+          fillColor = ~palCovidDeaths(spatial$county_deaths),
+          fillOpacity = 1,
+          label = paste(spatial$NAME, ": ", spatial$county_deaths, sep = "")
+        ) %>%
+        addLegend(
+          position = "bottomright",
+          pal = palCovidDeaths,
+          values = spatial$county_deaths,
+          opacity = 1,
+          title = "# COVID Deaths"
+        )
+    }
+  })
+}
+
+
+shinyApp(ui = ui, server = server)
+```
+
+
+
+
+## Summary
+
+These simple visualizations help explore the COVID-19 data more efficiently and inform magnitude of this pandemic with interactively. As the situation develops, the data could be updated to reflect more up-to-date information.  
+
+\ 
+
+## Bibliography
+
+[1] _State FIPS Codes_. USDA Natural Resources Conservation Service. Retrieved April 15, 2020 from https://www.nrcs.usda.gov/wps/portal/nrcs/detail/?cid=nrcs143_013696
+
+[2] COVID-19 Dataset: https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv
+
+[3] Population Statistics: https://en.wikipedia.org/wiki/List_of_states_and_territories_of_the_United_States_by_population_density
+
+\
