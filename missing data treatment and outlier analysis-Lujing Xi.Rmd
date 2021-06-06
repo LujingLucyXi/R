@@ -1,0 +1,134 @@
+---
+title: "Missing Data Treatment and Outlier Analysis"
+author: "Lujing Xi"
+date: "6/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{R}
+library(readr)
+library(readxl)
+ 
+crime <- read.csv("crimedata.csv", na="?")
+
+head(crime)
+
+#In the original data set, all missing values were represented by "?". When loading data, I added na="?" to recode ? into NA.
+```
+
+```{R}
+
+summary(crime)
+str(crime)
+sum(is.na(crime)==TRUE)
+
+#This step shows there are 44592 missing values in total.
+
+```
+
+
+
+
+
+```{R}
+
+
+sort(sapply(crime, function(x) sum(is.na(x))))
+
+#This step provides a list of NA value for each variable, ordered by ascending order for the number of NAs. 
+```
+
+```{R}
+
+
+table(complete.cases(crime))
+
+
+prop.table(table(complete.cases(crime)))*100
+
+#The complete cases ratio is only around 5% in this data set. Approximately 95% entries have missing data. This is not surprising because according to the last table, many variables have up to 1872 missing values out of 2215 total observations. 
+```
+
+```{R}
+
+library(devtools)
+
+library(extracat)
+
+visna(crime,sort="b")
+
+#The visualization shows that lots of missing values are concentrated on several variables, such as variables ranging from countrycode (1221 missing out of 2215) to PolicBudgPerPop (1872 missing out of 2215). The range includes 24 variables out of 147 variables in total. Other 123 variables have less than 222 missing values. It is the rule of thumb that the 24 variables with over 50% missing values shall be deleted. 
+```
+```{R}
+#Defining & Treating missing values
+#The missing values follow the MCAR features because the missing pattern doesn't depend on any variable. They are missing completely at random. And since the missing values are over 50% for 24 variables as described in the previous paragraph, column-wise deletion will be executed firstly.
+
+
+colnames(crime)
+crime2<-crime[-c(3, 4,104:120, 124:128)]
+
+```
+```{R, results="hide"}
+#For the variables with 1-221 missing values, mean imputation would be a good way to preserve the records while not misleading the outcome of analysis, especially when the records are mostly numerical. To do this I use the following codes. 
+library(Hmisc)
+with(crime2, impute( robberies, mean))
+with(crime2, impute( robbbPerPop , mean))
+with(crime2, impute( burglaries, mean))
+with(crime2, impute(burglPerPop, mean))
+with(crime2, impute(  larcenies, mean))
+with(crime2, impute( larcPerPop  , mean))
+with(crime2, impute(  assaults , mean))
+with(crime2, impute(   assaultPerPop, mean))
+with(crime2, impute(arsons, mean))
+with(crime2, impute( arsonsPerPop, mean))
+with(crime2, impute( nonViolPerPop, mean))
+with(crime2, impute(  rapes, mean))
+with(crime2, impute(  rapesPerPop, mean))
+with(crime2, impute(  ViolentCrimesPerPop, mean))
+```
+```{R}
+
+#Now let us look at the updated data summary. In short, the original data is preserved in an optimal way without any record deletion. The only deletion occurred for the 24 variables with over 50% values missing across records. They were excluded from the table. However, if there were cases where those variables are highlighted, record deletion or pair-wise deletion might be a good way to assist with a smaller-scale analysis focusing on those variables. 
+
+summary(crime2)
+str(crime2)
+
+#The result of 2215 records and 123 variables match with the missing data treatment steps. No record was deleted, but 24 variables were removed out of the 147 variables. 
+```
+```{R}
+#Outlier Analysis
+
+
+#Assuming that RentMedian is the Y variable in this analysis, let us look at the number of outliers for this dependent variable. Firstly let us check the histogram and box plot for a general idea. 
+
+library(ggplot2)
+
+ggplot(data=crime2, aes(crime2$RentMedian)) + 
+  geom_histogram()
+
+ggplot(data=crime2, aes(x=state, y= RentMedian))+geom_boxplot(outlier.colour="black", outlier.shape=16,
+             outlier.size=2, notch=FALSE)
+
+
+ggplot(data=crime2, aes(RentMedian))+geom_boxplot(outlier.colour="black", outlier.shape=16,
+             outlier.size=2, notch=FALSE)
+
+#Histogram and Boxplot show outliers on the right tail of the data for the variable RentMedian. If we take a closer look, for each state the outliers if any usually appear on the higher end of the spectrum. It indicates that there are luxury properties or properties of unique features/locations etc. that make them stick out in pricing far above the mean. To quantify this, let us examine the z scores of the records and check how many outliers there are. 
+
+z <- (crime2$RentMedian- mean(crime2$RentMedian)) / sd(crime2$RentMedian)
+
+
+number_of_outliers_for_Y <-sum(abs(z)>3)
+ratio_of_outliers_for_Y<-number_of_outliers_for_Y/2215
+
+number_of_outliers_for_Y
+ratio_of_outliers_for_Y
+
+
+#The results show that 23 data points out of 2215 records for RentMedian are outliers because they are more than 3 standard deviations away from the mean. The percentage of outliers for the defined Y is around 1.04%. 
+```
+                             
