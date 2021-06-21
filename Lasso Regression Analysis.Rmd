@@ -1,0 +1,187 @@
+---
+title: "Regression Analysis"
+author: "Lujing Xi"
+date: "6/20/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(formatR)
+
+knitr::opts_chunk$set(tidy.opts=list(width.cutoff=50), tidy=TRUE, echo=TRUE)
+```
+
+
+# Step 1: missing value treatment
+
+```{R, results="hide"}
+library(readr)
+library(readxl)
+ 
+crime <- read.csv("crimedata.csv", na="?")
+crime2<-crime[-c(3, 4,104:120, 124:128)]
+
+library(Hmisc)
+with(crime2, impute( robberies, mean))
+with(crime2, impute( robbbPerPop , mean))
+with(crime2, impute( burglaries, mean))
+with(crime2, impute(burglPerPop, mean))
+with(crime2, impute(  larcenies, mean))
+with(crime2, impute( larcPerPop  , mean))
+with(crime2, impute(  assaults , mean))
+with(crime2, impute(   assaultPerPop, mean))
+with(crime2, impute(arsons, mean))
+with(crime2, impute( arsonsPerPop, mean))
+with(crime2, impute( nonViolPerPop, mean))
+with(crime2, impute(  rapes, mean))
+with(crime2, impute(  rapesPerPop, mean))
+with(crime2, impute(  ViolentCrimesPerPop, mean))
+
+```
+# step 2: Regression
+
+## 2.1: normalization
+```{R}
+
+library(caret)
+preProcValues <- preProcess(crime2, method = c("center", "scale"))
+```
+## 2.2 Choose Regression model
+In this analysis, I would like to use RentMedian as the response variable, and 15 other variables as explanatory variables (murders, PopDens, PctUsePubTrans, HousVacant, MedYrHousBuilt, PctNotSpeakEnglWell, PctImmigRec10, whitePerCap, blackPerCap, AsianPerCap, PctPopUnderPov, pctWRetire, medIncome, PctEmploy, PctNotHSGrad). Lasso Regression will be the most suitable regression method because the independent variables might have high multicollinearity. Also, Lasso Regression automates model selection, so that I could select more independent variables and let the model filter out the less relevant ones. 
+
+## 2.3 Train/Test Split
+
+```{R}
+
+library(caret)
+trainIndex <- createDataPartition(y = crime2$RentMedian, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+
+
+train.data <- crime2[ trainIndex,]
+test.data  <- crime2[-trainIndex,] 
+
+```
+
+## 2.4 Build Lasso Regression Model 
+```{R}
+y = train.data$RentMedian
+
+x <- data.matrix(train.data[, c('murders', 'PopDens', 'PctUsePubTrans', 'HousVacant', 'MedYrHousBuilt','PctNotSpeakEnglWell', 'PctImmigRec10', 'whitePerCap', 'blackPerCap', 'AsianPerCap', 'PctPopUnderPov', 'pctWRetire', 'medIncome', 'PctEmploy', 'PctNotHSGrad')])
+
+library(glmnet)
+
+
+
+#perform k-fold cross-validation to find optimal lambda value
+model <- cv.glmnet(x, y, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- model$lambda.min
+best_lambda
+
+
+#produce plot of test MSE by lambda value
+plot(model) 
+
+
+
+
+```
+
+
+## 2.5 Model Summary
+
+```{R}
+
+library(dplyr)
+library(finalfit)
+best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+coef(best_model)
+X_train=c('murders', 'PopDens', 'PctUsePubTrans', 'HousVacant', 'MedYrHousBuilt','PctNotSpeakEnglWell', 'PctImmigRec10', 'whitePerCap', 'blackPerCap', 'AsianPerCap', 'PctPopUnderPov', 'pctWRetire', 'medIncome', 'PctEmploy', 'PctNotHSGrad')
+Y_train='RentMedian'
+train.data %>%
+  finalfit(Y_train, X_train, 
+  metrics=TRUE)
+
+```
+
+
+According to the summary table of model coefficients, no variable is dropped in the model selection. Number of Murders, Asians Per Capita, Percent of Population Under Poverty, and Percent of Population not High School Graduated are the variables negatively related with the Median Rent. Population Density, Percentage of Public Transportation Usage, Vacant Houses, Median Year of House Built, Percentage of Population not Speaking English Well, Percentage of Immigrants in the Recent 10 years, the White Per Capita, the Black Per Capita, Percentage of the Retired, Median Income, and Percentage of the Employed all positively influence the Median Rent. THe most prominent positive explanatory variables are Population Density, Percentage of Immigrants, Median Income, and Percentage of the Employed. The most prominent negative explanatory variable is Asian per Capita (when running the model on the full dataset, it was poverty. So the train-test split might have been uneven). Although some relationships do not make a lot of sense, the most prominent explanatory variables show logical correlation to the rent level of the area. 
+
+
+Using the finalfit package in R, a table for coefficients under multivariate linear regression (MLR) is shown. MLR doesn't take into account multicollinearity like Lasso Regression does, and the algorithms are different, so the coefficients vary quite a bit. If the main purpose for Lasso Regression is to eliminate irrelevant variables, then the lm function could be used and the metrics such as the p-value could be looked into. In that case, HousVacant, AsianPerCap, HousVacant, and PctEmploy might need to be re-considered due to higher p-values than 0.05. 
+
+
+
+## 2.6 Model Prediction
+```{R}
+
+#In this case, we are using the best fit model from the Lasso Regression using the best lambda. 
+x_train <- data.matrix(train.data[, c('murders', 'PopDens', 'PctUsePubTrans', 'HousVacant', 'MedYrHousBuilt','PctNotSpeakEnglWell', 'PctImmigRec10', 'whitePerCap', 'blackPerCap', 'AsianPerCap', 'PctPopUnderPov', 'pctWRetire', 'medIncome', 'PctEmploy', 'PctNotHSGrad')])
+pred_median_rent_train<- predict(best_model, s = best_lambda, newx = x_train)
+
+x_test <- data.matrix(test.data[, c('murders', 'PopDens', 'PctUsePubTrans', 'HousVacant', 'MedYrHousBuilt','PctNotSpeakEnglWell', 'PctImmigRec10', 'whitePerCap', 'blackPerCap', 'AsianPerCap', 'PctPopUnderPov', 'pctWRetire', 'medIncome', 'PctEmploy', 'PctNotHSGrad')])
+pred_median_rent_test<- predict(best_model, s = best_lambda, newx = x_test)
+
+
+actual_median_rent<-test.data$RentMedian
+
+Pred_vs_actual<-data.frame(PredictedMedianRent=pred_median_rent_test, ActualMedianRent=actual_median_rent, row.names = NULL)
+
+colnames(Pred_vs_actual) <- c("PredictedMedianRent","ActualMedianRent")
+
+print(Pred_vs_actual)
+
+#The table below summarizes the predicted median rent based on the Lasso Regression's best model, fitted to the train data and applied to the test data. Intuitively, the results are quite promising, with small discrepancies only. The evaluation step will look more into 
+
+```
+## Model Evaluation
+```{R}
+
+library(caret)
+
+
+
+
+Model_Evaluation_On_TrainData<-
+  data.frame( 
+  R2 = R2(pred_median_rent_train, train.data$RentMedian),
+  MAE = MAE(pred_median_rent_train, train.data$RentMedian),
+  RMSE = RMSE(pred_median_rent_train, train.data$RentMedian))
+
+colnames(Model_Evaluation_On_TrainData)<-c("R-Squared","MeanAbsoluteError","RootMeanSquareError")
+
+Model_Evaluation_On_TestData<-
+  data.frame( 
+  R2 = R2(pred_median_rent_test, test.data$RentMedian),
+  MAE = MAE(pred_median_rent_test, test.data$RentMedian),
+  RMSE = RMSE(pred_median_rent_test, test.data$RentMedian))
+
+colnames(Model_Evaluation_On_TestData)<-c("R-Squared","MeanAbsoluteError","RootMeanSquareError")
+
+
+print(Model_Evaluation_On_TrainData)
+print(Model_Evaluation_On_TestData)
+
+
+```
+The R squared value is quite high for the train data and even higher for the test data, indicating a relatively good model performance. The Root Mean Square Error is the square root of the MSE, and it is the standard deviation of the residuals. The values are similar across the train and test data, indicating no overfit problem. The MAE is also in the acceptable range relative to the large dataset. 
+
+
+## 2.7 Results
+
+
+
+The practice set out to use Lasso Regression to model the relationship between 15 independent variables and 1 dependent variable, where all variables are numeric. The dataset is extremely large, and the dependent variable selected were murders, PopDens, PctUsePubTrans, HousVacant, MedYrHousBuilt, PctNotSpeakEnglWell, PctImmigRec10, whitePerCap, blackPerCap, AsianPerCap, PctPopUnderPov, pctWRetire, medIncome, PctEmploy, and PctNotHSGrad. Collectively, they would predict the Median Rent of the region. The reasons for choosing Lasso Regression mainly include: 1. The auto selection of explanatory variables, where the coefficient(s) of irrelevant or unsuitable variable(s) would shrink to 0; 2. Lasso regression considers multicollinearity and would be helpful when there are a large number of variables. The technique used involved splitting the data into train (80%) and test (20%) sections randomly, and then find the best lamda 0.1625085 and therefore get the best model. 
+
+For the model result, I evaluated from 2 perspectives. Firstly, a table was made to compare the best-model-predicted median rent and the actual median rent for the test dataset. Intuitively, the prediction results are close to the actual numbers. Following that, the R Square, Mean Absolute Error and Root Mean Square Errors are listed in data frames for both the train and test datasets. The R Squared values are both quite high, and there are no discrepancy between the train and test sections. This reinforces the absence of any model overfit. 
+
+Overall, statistically the model yields really great results. However, as mentioned in the previous part about model coefficients, some positive or negative relationships do not make a lot of sense. For example, Asians per Capita had the most significant negative coefficient, meaning that Asian-concentrated communities have the lowest rental price, which is not logically sound. Whether this is a coincidence given variable selection or data collection, it will need future work to validate. 
+
+
+
+
